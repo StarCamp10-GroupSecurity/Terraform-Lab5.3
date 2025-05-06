@@ -62,10 +62,10 @@ resource "aws_launch_template" "ec2_launch_template" {
 # EC2 Auto Scaling Group
 resource "aws_autoscaling_group" "ec2_autoscaling_group" {
   name                  = "${var.proj}-asg-ec2-${var.environment}"
-  max_size              = 2
+  max_size              = 3
   min_size              = 1
   desired_capacity      = 2
-  vpc_zone_identifier   = values(aws_subnet.private_subnets)[*].id
+  vpc_zone_identifier   = aws_subnet.private_subnets[*].id
   health_check_type     = "EC2"
   protect_from_scale_in = false
 

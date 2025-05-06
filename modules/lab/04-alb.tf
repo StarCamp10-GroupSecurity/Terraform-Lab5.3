@@ -51,7 +51,7 @@ resource "aws_alb" "main" {
   internal           = false
   load_balancer_type = "application"
   security_groups    = [aws_security_group.ALB_SG.id]
-  subnets            = values(aws_subnet.public_subnets)[*].id
+  subnets            = aws_subnet.public_subnets[*].id
 
   enable_deletion_protection = false
 

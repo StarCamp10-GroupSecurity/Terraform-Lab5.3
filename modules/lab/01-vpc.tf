@@ -1,3 +1,8 @@
+locals {
+  len_public_subnets  = length(var.vpc_public_subnets)
+  len_private_subnets = length(var.vpc_private_subnets)
+}
+
 #####################
 #        VPC        #
 #####################
@@ -7,43 +12,58 @@ resource "aws_vpc" "main" {
   enable_dns_hostnames = true
   enable_dns_support   = true
   tags = {
-    Name        = "${var.proj}-vpc-${var.environment}"
+    Name = "${var.proj}-vpc-${var.environment}"
   }
 }
 
 resource "aws_internet_gateway" "igw" {
   vpc_id = aws_vpc.main.id
   tags = {
-    Name        = "${var.proj}-igw-${var.environment}"
+    Name = "${var.proj}-igw-${var.environment}"
   }
 }
 
-// Public Subnet
+
+#####################
+#   Public Subnet   #
+#####################
+
+locals {
+  create_public_subnets = local.len_public_subnets > 0
+}
+
 resource "aws_subnet" "public_subnets" {
-  for_each                = toset(var.vpc_public_subnets)
+  count                   = local.create_public_subnets && (local.len_public_subnets >= length(var.vpc_azs)) ? local.len_public_subnets : 0
   vpc_id                  = aws_vpc.main.id
-  cidr_block              = each.value
-  availability_zone       = var.vpc_azs[index(var.vpc_public_subnets, each.value)]
+  cidr_block              = element(concat(var.vpc_public_subnets, [""]), count.index)
+  availability_zone       = length(regexall("^[a-z]{2}-", element(var.vpc_azs, count.index))) > 0 ? element(var.vpc_azs, count.index) : null
   map_public_ip_on_launch = true
 
   tags = {
-    Name = "${var.proj}-pub-subnet-${var.environment}-${index(var.vpc_public_subnets, each.value) + 1}"
+    Name = "${var.proj}-pub-subnet-${var.environment}-${count.index + 1}"
   }
 }
 
-// Private Subnet
+#####################
+#  Private Subnet   #
+#####################
+locals {
+  create_private_subnets = local.len_private_subnets > 0
+}
+
 resource "aws_subnet" "private_subnets" {
-  for_each          = toset(var.vpc_private_subnets)
-  vpc_id            = aws_vpc.main.id
-  cidr_block        = each.value
-  availability_zone = var.vpc_azs[index(var.vpc_private_subnets, each.value)]
+  count                   = local.create_private_subnets && (local.len_private_subnets >= length(var.vpc_azs)) ? local.len_private_subnets : 0
+  vpc_id                  = aws_vpc.main.id
+  cidr_block              = element(concat(var.vpc_private_subnets, [""]), count.index)
+  availability_zone       = length(regexall("^[a-z]{2}-", element(var.vpc_azs, count.index))) > 0 ? element(var.vpc_azs, count.index) : null
+  map_public_ip_on_launch = true
 
   tags = {
-    Name = "${var.proj}-prv-subnet-${var.environment}-${index(var.vpc_private_subnets, each.value) + 1}"
+    Name = "${var.proj}-prv-subnet-${var.environment}-${count.index + 1}"
   }
 }
 
-// create public route table
+// create_private route table
 resource "aws_route_table" "public_route_table" {
   vpc_id = aws_vpc.main.id
 
@@ -71,17 +91,24 @@ resource "aws_route_table" "private_route_table" {
   }
 }
 
-## public subnet Association
+
+#################################
+#   Public Subnet Association   #
+#################################
 resource "aws_route_table_association" "public_subnets_associations" {
-  for_each       = aws_subnet.public_subnets
-  subnet_id      = each.value.id
+  count = local.create_public_subnets ? local.len_public_subnets : 0
+
+  subnet_id      = element(aws_subnet.public_subnets[*].id, count.index)
   route_table_id = aws_route_table.public_route_table.id
 }
 
-## private subnet Association
+#################################
+#  Private Subnet Association   #
+#################################
 resource "aws_route_table_association" "private_subnets_associations" {
-  for_each       = aws_subnet.private_subnets
-  subnet_id      = each.value.id
+  count = local.create_private_subnets ? local.len_private_subnets : 0
+
+  subnet_id      = element(aws_subnet.private_subnets[*].id, count.index)
   route_table_id = aws_route_table.private_route_table.id
 }
 
@@ -132,7 +159,7 @@ resource "aws_eip" "main" {
 
 resource "aws_nat_gateway" "main" {
   allocation_id = aws_eip.main.id
-  subnet_id     = values(aws_subnet.public_subnets)[0].id
+  subnet_id     = aws_subnet.public_subnets[0].id
 
   tags = {
     Name = "${var.proj}-natgw-${var.environment}"
